@@ -1,0 +1,311 @@
+---
+title: |
+ Advanced Topics in Statistics  
+ Decision Trees, Random Forests, Support Vector Machines in R and Python
+  
+date: "11th Feb 2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Decision Trees
+
+Decision trees are simple and intuitive predictive models, making them a popular choice when decision rules are required, for example in medicine. A decision tree is constructed as follows:
+
+1. Find the yes/no rule that best splits the data with respect to *one* of the features.
+
+2. The best split is the one that produces the most homogeneous groups; found by maximising information gain/lowering entropy.
+
+3. Repeat steps 1 to 2 until all data are correctly classified or some stopping rule reached.
+\bigskip
+
+In this exercise we will build a decision tree to classify the flowers in the *iris* dataset into one of the following classes: setosa, versicolor, virginica. We first split the dataset into a training dataset and a test dataset, then we use the training dataset to build the decision tree, and the test dataset to evaluate the performance of the built tree. 
+
+In R the `C50` package is needed to build a decision tree. The `x` argument of the `C5.0` function takes the dataset with the possible predictors, while the `y` argument has the list of labels. We can plot the tree by simply using the `plot` funtion on the outcome.
+
+In Python we use the `tree.DecisionTreeClassifier` function of the `tree` package to build the decision tree. To draw the decision tree we use the `graphviz` package of Python.
+
+Finally, in both R and Python the `predict` function can be used to evaluate the performance of the fitted tree, which predicts the labels of the observations in the test dataset.
+
+\textcolor{red}{\textbf{R:}}
+```{r,eval=FALSE}
+library(C50)
+library(caret)
+
+# Split train/test data
+ii <- createDataPartition(iris[, 5], p=.7, list=F) ## returns indices for train data
+xTrain <- iris[ii, 1:4]; yTrain <- iris[ii, 5]
+xTest <- iris[-ii, 1:4]; yTest <- iris[-ii, 5]
+
+# Fit and plot model
+mdl <- C5.0(x=xTrain, y=yTrain)
+plot(mdl)
+
+# Test model on testing data
+yTestPred <- predict(mdl, newdata=xTest)
+confusionMatrix(yTestPred, yTest) # predicted/true
+```
+
+
+\textcolor{blue}{\textbf{Python:}}
+
+```{r,eval=FALSE}
+from sklearn.model_selection import train_test_split
+from sklearn import datasets
+iris = datasets.load_iris()
+from sklearn import tree
+import graphviz
+from sklearn.metrics import confusion_matrix
+
+
+xTrain, xTest, yTrain, yTest = train_test_split(iris.data, iris.target, 
+                                                train_size=0.7, random_state=103)
+
+
+# Fit model
+mdl = tree.DecisionTreeClassifier()
+mdl.fit(X=xTrain, y=yTrain)
+```
+Once trained, you can plot the tree with the plot_tree function:
+
+```{r,eval=F}
+tree.plot_tree(mdl.fit(iris.data, iris.target))
+```
+
+We can also export the tree in Graphviz format using the export_graphviz exporter. The export_graphviz exporter also supports a variety of aesthetic options, including coloring nodes by their class (or value for regression) and using explicit variable and class names if desired.
+```{r,eval=F}
+# Plot model using graphviz
+dot_data = tree.export_graphviz(mdl, out_file=None, 
+                      feature_names=iris.feature_names,  
+                      class_names=iris.target_names,  
+                      filled=True, rounded=True,  
+                      special_characters=True)  
+graph = graphviz.Source(dot_data)  
+graph 
+# Export as iris.pdf
+graph.render("iris")
+```
+
+Evaluate performance on test data.
+```{r,eval=FALSE}
+yTestPred = mdl.predict(xTest) # evaluate performance on test data
+print(confusion_matrix(yTest, yTestPred)) # true/predicted
+```
+
+Decision trees are easy to explain to non-experts and can be directly used to generate rules. Furthermore they are computationally inexpensive to train, evaluate and store, they can handle both categorical and continuous data. They are also robust to outliers. 
+
+However decision trees can easily overfit the data, and their predictive accuracy can be quite poor. They can only have linear decision boundaries, and small changes in the data may lead to a completely different tree. 
+
+## Random Forests
+
+Random forests is an ensemble method developed to mitigate the problem of overfitting in decision trees. Instead of a single tree, multiple decision trees are grown and averaged over as follows (each tree is known as a weak learner):
+
+1. Grow `T` decorrelated trees (no pruning).
+
+2. Induce randomness by:
+
+  * Bagging (bootstrap aggregating), where each tree is trained on a subset of the data randomly sampled with replacement.
+  
+  * Considering only a subset of predictors as candidates for each split.
+
+3. Average predictions from all `T` trees.
+
+Cross-validation is inherent in the random forests methodology as every tree is trained only on a subset of the original data. This allows the computation of an estimate for the generalisation error by computing the predictive performance of the model on the data left out from the training process, known as the *out-of-bag* (OOB) error. The OOB data are also used to compute an estimate of the importance of every predictor, which can be subsequently used for feature selection.
+\bigskip
+
+In this exercise we fit a random forest to the iris dataset using the `train` function with method `rf`. We fix the number of trees (`ntree`), and the number of variables available for splitting at each tree node (`mtry`). 
+
+\textcolor{red}{\textbf{R:}}
+```{r,eval=FALSE}
+library(randomForest)
+# Fit Random Forest model
+# Fix ntree and mtry
+set.seed(1040) # for reproducibility
+mdl <- train(x=xTrain, y=yTrain, 
+             method='rf',
+             ntree=200,
+             tuneGrid=data.frame(mtry=2))
+print(mdl)
+```
+Next we test the fitted model.
+```{r,eval=FALSE}
+# Test model on testing data
+yTestPred <- predict(mdl, newdata=xTest)
+confusionMatrix(yTestPred, yTest) # predicted/true
+```
+We can use the `varImp` function to estimate the importance of each variable.
+```{r,eval=FALSE}
+# Variable importance by mean decrease in gini index
+varImp(mdl$finalModel)
+```
+
+In Python the number of forests is specified by the `n_estimators` parameter of hte `RandomForestClassifier` function, while the number of variables available at each splitting is given by the `max_features` argument of the function. We set the seed using the `random_stat` parameter.
+
+\textcolor{blue}{\textbf{Python:}}
+```{r,eval=FALSE}
+from sklearn.ensemble import RandomForestClassifier
+
+# create an instance of the RandomForestClassifier
+mdl = RandomForestClassifier(n_estimators=200, max_features=2, random_state=1040)
+# Fit the model 
+mdl.fit(X=xTrain, y=yTrain)
+
+yTestPred = mdl.predict(xTest) # evaluate performance on test data
+print(confusion_matrix(yTest, yTestPred)) # true/predicted
+
+# Variable importance by mean decrease in gini index
+print(iris.feature_names)  # print to remind us the order of features
+
+print(mdl.feature_importances_)
+```
+
+Even though models resulting from fitting a random forest are harder to interpret, they do have a very high predictive accuracy, while being robust to outliers, and prividing unbiased estimate of test error for every tree built (out-of-bag error). It can also handle thousands of both categorical and continuous predictors without variable deletion, and is trivially parallelisable.
+
+## Support Vector Machines
+
+The rationale behind a maximal margin classifier is to find an optimal line/hyperplane that maximises the margin, that is, the distance between data points of both classes. This turns out to be a rather straightforward optimisation problem.
+
+But what do we do if there isn’t a 'clean' separating line between the classes?
+
+Support vector classifiers (SVC) were developed that use a soft margin approach. The hyperplane is placed in a way that it correctly classifies most of the data points.
+
+In reality, we face even more complex data sets where a hyperplane would never do a good job at separating the two classes.
+
+A non-linear boundary would do the job. Support vector machines are a generalisation of support vector classifiers that make use of kernels to map the original feature set to a higher dimensional space where classes are linearly separable. This might sound counter-intuitive, as increasing the dimensionality of the problem is undesireable. However, the kernel trick enable us to work in an implicit feature space, such that the data is never explicitly expressed in higher dimensions. Think about kernels as generalised distance measures.
+
+The type of kernel is a hyperparameter that we can infer using cross-validation. However, in `caret`, each kernel is defined as a separate model, and thus the cross-validation loop need to be written manually rather than relying on the `trainControl` function. This is not a problem in `scikit-learn` where SVMs are implemented as a generic function that takes kernel as an input.
+
+Note: SVMs are inherently binary classifiers. The most common ways to deal with multi-class problems is by building several *one-versus-all* or *one-versus-one* classifiers.
+
+\textcolor{red}{\textbf{R:}}
+
+In `R` we use the `train` function with `svm_` method to fit a support vector machine, where `_` is the kernel we want to use. For example `svmLinear` is a support vector machine with a linear kernel, `svmRadial` is s SVM with radial basis kernel, while `svmPoly` uses a polynomial kernel.
+
+First we fit a SVM to the iris dataset using a linear kernel.
+
+The following code requires the kernlab package, which R might fail to install. In this case, download the kernlab folder from ELE and copy it into the folder with the R libraries (for me this is Machintos HD/Library/Frameworks/R.framework/Versions/3.6/Resources/library).
+
+```{r,eval=F}
+library(kernlab)
+# library(tidyverse)
+mdl <- train(x=xTrain,y=yTrain, method='svmLinear')
+print(mdl)
+
+# Test model on testing data
+yTestPred <- predict(mdl, newdata=xTest)
+# yTestPred <- mdl %>% predict(xTest)
+confusionMatrix(yTestPred, yTest) # predicted/true
+```
+By default the SVM linear classifier is built using C = 1. It’s possible to automatically compute SVM for different values of C and to choose the optimal one that maximise the model cross-validation accuracy. In the following example we use a 5-fold cross validation, and try 20 different C values between 0 and 2.
+
+```{r,eval=F}
+mdl <- train(x=xTrain,y=yTrain, method = "svmLinear",
+  trControl = trainControl("cv", number = 5),
+  tuneGrid = expand.grid(C = seq(0.0, 2, length = 20)))
+
+# Plot model accuracy vs different values of Cost
+plot(mdl)
+
+# Print the best tuning parameter C that maximises model accuracy
+mdl$bestTune
+
+# Test model on testing data
+yTestPred <- predict(mdl, newdata=xTest)
+confusionMatrix(yTestPred, yTest) # predicted/true
+```
+
+/Note that in some cases we might want to normalise the variables to make their scale comparable. This is automatically done before building the SVM classifier by setting the option `preProcess = c("center","scale")`/.
+
+Next we fit a SVM using a non-linear (polynomial) kernel. The package automatically chooses the optimal values for the model tuning parameters, where optimal is defined as values that maximise the model accuracy.
+
+```{r,eval=F}
+mdl <- train(x=xTrain,y=yTrain, method='svmPoly')
+print(mdl)
+
+mdl$bestTune
+# Test model on testing data
+yTestPred <- predict(mdl, newdata=xTest)
+confusionMatrix(yTestPred, yTest) # predicted/true
+```
+
+```{r,eval=F, include=F}
+library(kernlab)
+# Set training options
+# Repeat 5-fold cross-validation, ten times
+opts <- trainControl(method='repeatedcv', number=5, repeats=10, p=0.7)
+
+# Fit SVM with linear kernel
+set.seed(1040) # for reproducibility
+mdl <- train(x=xTrain, y=yTrain,            # training data 
+             method='svmLinear',            # machine learning model
+             trControl=opts,                # training options
+             tuneGrid=data.frame(C=c(0.01, 1, 10, 100, 1000))) # range of C's to try
+print(mdl)
+
+# Test model on testing data
+yTestPred <- predict(mdl, newdata=xTest)
+confusionMatrix(yTestPred, yTest) # predicted/true
+```
+
+\textcolor{blue}{\textbf{Python:}}
+
+In Python we will try fitting SVM using a linear (`linear`) and a Gaussian kernel (`rbf`). Here we use repeated 5-fold cross validation 10 times. This repeats the 5-Fold CV 10 times with different randomisation in each repetition. Note that in R we can use the following option to achieve this: `trainControl(method='repeatedcv', number=5, repeats=10)`
+
+
+In Python the GridSearchCV function implements an exhaustive search over specified parameter values for an estimator.
+```{r,eval=F}
+from sklearn.svm import SVC
+from sklearn.model_selection import RepeatedKFold
+from sklearn.model_selection import GridSearchCV
+# Repeat 5-fold cross-validation, ten times
+cv = RepeatedKFold(n_splits=5, n_repeats=10, random_state=1040) 
+
+# set hyperprameter search grid
+paramGrid = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4], 'C': [1, 10, 100, 1000]},
+             {'kernel': ['linear'], 'C': [1, 10, 100, 1000]}] 
+
+# Create an instance of the support vector machine.
+# Note that SVC stands for C-Support Vector Classification
+mdl = GridSearchCV(estimator=SVC(), param_grid=paramGrid, cv=cv)
+
+# Fit SVM
+mdl.fit(X=xTrain, y=yTrain)
+
+print(mdl.best_estimator_)
+
+yTestPred = mdl.predict(xTest) # evaluate performance on test data
+print(confusion_matrix(yTest, yTestPred)) # true/predicted
+```
+The previous code automatically considers both linear and Gaussian kernels, thus it optimises over both the kernel choice and the corresponding parameter. We can however choose the tuning parameter manually too. The following code fits a SVM with a linear kernel, a Gaussian kernel and a polynomial kernel, where the parameters of the corresponding kernels are specified.
+
+```{r,eval=F}
+from sklearn import svm
+
+C = 1.0  # SVM regularisation parameter
+svc = svm.SVC(kernel='linear', C=C).fit(xTrain, yTrain)
+svc
+rbf_svc = svm.SVC(kernel='rbf', gamma=0.7, C=C).fit(xTrain, yTrain)
+rbf_svc
+poly_svc = svm.SVC(kernel='poly', degree=3, C=C).fit(xTrain, yTrain)
+poly_svc
+
+# Prediction using the polynomial kernel
+yTestPred = poly_svc.predict(xTest) # evaluate performance on test data
+print(confusion_matrix(yTest, yTestPred)) # true/predicted
+```
+
+Support vector machines enjoy state-of-the-art predictive accuracy. They have low storage requirements since only the support vectors need to be stored. A vast array of kernels are available that are flexible enough to cater for any type of data, and reaching global optimum guaranteed.
+
+On the other hand the resulting model is hard to interpret, and the feature space cannot be visualised.
+
+
+## Tasks
+
+Download the gene expression and wine datasets from the ELE page.
+
+1. For the gene expression dataset use any of the techniques described above (feel free to try and compare all of them) to build a binary classifier to classify the B- and T-cell leukaemia patients. Compute the predictive performance measures.
+
+2. For the wine dataset use any of the techniques described above (feel free to try and compare all of them) and build a multi-label classifier to classify the three different types of wine. Compute the predictive performance measures.
